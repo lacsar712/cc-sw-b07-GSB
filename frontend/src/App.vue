@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from './api.js'
 
@@ -10,9 +10,22 @@ const role = ref(localStorage.getItem('role') || '')
 const user = ref(localStorage.getItem('user') || '')
 const err = ref('')
 const loginForm = ref({ username: 'calibrator', password: 'calib123456' })
+const gating = ref(false)
+let gateTimer
 
 const isHome = computed(() => route.path === '/')
 const isDetail = computed(() => route.path.startsWith('/jobs/'))
+const isGate = computed(() => route.path === '/gate')
+
+async function pollGate() {
+  if (!localStorage.getItem('tok')) return
+  try {
+    const g = await api('/api/gate')
+    gating.value = !!g.gating
+  } catch {
+    /* 角落提示轮询失败不打扰页面 */
+  }
+}
 
 async function login() {
   err.value = ''
@@ -43,6 +56,12 @@ function logout() {
   localStorage.clear()
   router.push('/')
 }
+
+onMounted(() => {
+  pollGate()
+  gateTimer = setInterval(pollGate, 2000)
+})
+onUnmounted(() => clearInterval(gateTimer))
 </script>
 
 <template>
@@ -57,7 +76,12 @@ function logout() {
           :class="{ active: isDetail }"
           title="请从总表点击任务行进入"
         >任务详情</span>
+        <span class="nav-sep">|</span>
+        <router-link to="/gate" :class="{ active: isGate }">缓领闸</router-link>
       </nav>
+      <router-link v-if="gating" to="/gate" class="gate-corner" title="连续超差触发缓领，点击查看缓领闸">
+        缓领中
+      </router-link>
       <div class="user-area">
         <span>{{ user }}（{{ role }}）</span>
         <button type="button" @click="logout">退出</button>
@@ -131,6 +155,22 @@ function logout() {
 }
 .nav-sep {
   color: #5a6a7a;
+}
+.gate-corner {
+  color: #ffd7d7;
+  background: #b00020;
+  padding: 3px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  animation: gate-blink 1.2s ease-in-out infinite;
+}
+@keyframes gate-blink {
+  50% {
+    opacity: 0.55;
+  }
 }
 .nav-hint {
   cursor: default;
