@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from './api.js'
 
@@ -10,9 +10,22 @@ const role = ref(localStorage.getItem('role') || '')
 const user = ref(localStorage.getItem('user') || '')
 const err = ref('')
 const loginForm = ref({ username: 'calibrator', password: 'calib123456' })
+const gate = ref(null)
+let gateTimer
 
 const isHome = computed(() => route.path === '/')
 const isDetail = computed(() => route.path.startsWith('/jobs/'))
+const isGate = computed(() => route.path === '/gate')
+const holding = computed(() => !!gate.value?.holding)
+
+async function refreshGate() {
+  if (!localStorage.getItem('tok')) return
+  try {
+    gate.value = await api('/api/gate')
+  } catch {
+    // 角落提示静默失败，不打断页面
+  }
+}
 
 async function login() {
   err.value = ''
@@ -30,6 +43,7 @@ async function login() {
     localStorage.setItem('tok', token.value)
     localStorage.setItem('role', role.value)
     localStorage.setItem('user', user.value)
+    refreshGate()
     router.push('/')
   } catch (e) {
     err.value = String(e.message || e)
@@ -40,9 +54,16 @@ function logout() {
   token.value = ''
   role.value = ''
   user.value = ''
+  gate.value = null
   localStorage.clear()
   router.push('/')
 }
+
+onMounted(() => {
+  refreshGate()
+  gateTimer = setInterval(refreshGate, 2000)
+})
+onUnmounted(() => clearInterval(gateTimer))
 </script>
 
 <template>
@@ -57,6 +78,8 @@ function logout() {
           :class="{ active: isDetail }"
           title="请从总表点击任务行进入"
         >任务详情</span>
+        <span class="nav-sep">|</span>
+        <router-link to="/gate" :class="{ active: isGate }">缓领闸</router-link>
       </nav>
       <div class="user-area">
         <span>{{ user }}（{{ role }}）</span>
@@ -78,6 +101,11 @@ function logout() {
       </template>
       <router-view v-else />
     </main>
+
+    <div v-if="token && holding" class="corner-hint" title="角落提示：缓领闸生效中">
+      缓领中：普通待处理暂停领取（剩 {{ gate.remaining_seconds }} 秒），急测待处理照常。
+      <router-link to="/gate">查看缓领闸</router-link>
+    </div>
   </div>
 </template>
 
@@ -169,5 +197,23 @@ function logout() {
 }
 .err {
   color: #b00020;
+}
+.corner-hint {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 200;
+  max-width: 320px;
+  padding: 10px 14px;
+  background: #fff4e5;
+  border: 1px solid #e0a030;
+  border-radius: 6px;
+  color: #7a4d00;
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+.corner-hint a {
+  color: #7a4d00;
+  font-weight: 600;
 }
 </style>
